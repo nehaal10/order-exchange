@@ -1,7 +1,6 @@
 {
   "name": "eternalabs",
   "version": "1.0.0",
-  "type": "module",
   "description": "Solana DEX Order Execution Engine with Mock Routing",
   "main": "dist/server.js",
   "scripts": {

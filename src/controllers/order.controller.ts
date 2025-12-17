@@ -3,6 +3,8 @@ import { CreateOrderDTO } from '../models/order.model';
 import { OrderType, OrderStatus } from '../models/enums';
 import { randomUUID } from 'crypto';
 import { addConnection, removeConnection, sendInitialStatus } from '../services/websocket.service';
+import { storeOrder } from '../services/redis.service';
+import { createOrderInDB } from '../services/postgres.service';
 import type { WebSocket } from '@fastify/websocket';
 
 // Simple validation helper
@@ -28,13 +30,6 @@ function validateOrderRequest(body: any): { valid: boolean; error?: string } {
     return { valid: false, error: 'Only MARKET orders are supported in this version. LIMIT and SNIPER coming soon.' };
   }
 
-  if (body.slippageTolerance !== undefined &&
-      (isNaN(parseFloat(body.slippageTolerance)) ||
-       parseFloat(body.slippageTolerance) < 0 ||
-       parseFloat(body.slippageTolerance) > 100)) {
-    return { valid: false, error: 'slippageTolerance must be between 0 and 100' };
-  }
-
   return { valid: true };
 }
 
@@ -56,19 +51,37 @@ export async function createOrder(
     // Generate orderId
     const orderId = randomUUID();
 
+    // Create order object
+    const order = {
+      id: orderId,
+      type: body.type,
+      tokenIn: body.tokenIn,
+      tokenOut: body.tokenOut,
+      amountIn: body.amountIn,
+      limitPrice: body.limitPrice,
+      status: OrderStatus.PENDING,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Store in both PostgreSQL (source of truth) and Redis (active processing)
+    await Promise.all([
+      createOrderInDB(order),
+      storeOrder(order)
+    ]);
+
     // Return orderId with WebSocket URL for status streaming
     const wsUrl = `ws://localhost:8080/api/orders/stream?orderId=${orderId}`;
 
     return reply.status(201).send({
       orderId,
       wsUrl,
-      type: body.type,
-      tokenIn: body.tokenIn,
-      tokenOut: body.tokenOut,
-      amountIn: body.amountIn,
-      limitPrice: body.limitPrice,
-      slippageTolerance: body.slippageTolerance,
-      status: OrderStatus.PENDING,
+      type: order.type,
+      tokenIn: order.tokenIn,
+      tokenOut: order.tokenOut,
+      amountIn: order.amountIn,
+      limitPrice: order.limitPrice,
+      status: order.status,
       message: 'Order created successfully. Connect to wsUrl for real-time updates.'
     });
 

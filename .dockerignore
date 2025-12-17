@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log
+dist
+.env
+.git
+.gitignore
+README.md
+CLAUDE.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+test-order-ws.js
