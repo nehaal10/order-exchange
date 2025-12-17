@@ -1,7 +1,9 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { CreateOrderDTO } from '../models/order.model';
-import { OrderType } from '../models/enums';
+import { OrderType, OrderStatus } from '../models/enums';
 import { randomUUID } from 'crypto';
+import { addConnection, removeConnection, sendInitialStatus } from '../services/websocket.service';
+import type { WebSocket } from '@fastify/websocket';
 
 // Simple validation helper
 function validateOrderRequest(body: any): { valid: boolean; error?: string } {
@@ -54,18 +56,20 @@ export async function createOrder(
     // Generate orderId
     const orderId = randomUUID();
 
-    // For now, just return the orderId
-    // We'll add WebSocket upgrade in next commit
+    // Return orderId with WebSocket URL for status streaming
+    const wsUrl = `ws://localhost:8080/api/orders/stream?orderId=${orderId}`;
+
     return reply.status(201).send({
       orderId,
+      wsUrl,
       type: body.type,
       tokenIn: body.tokenIn,
       tokenOut: body.tokenOut,
       amountIn: body.amountIn,
       limitPrice: body.limitPrice,
       slippageTolerance: body.slippageTolerance,
-      status: 'pending',
-      message: 'Order created successfully'
+      status: OrderStatus.PENDING,
+      message: 'Order created successfully. Connect to wsUrl for real-time updates.'
     });
 
   } catch (error: any) {
@@ -75,4 +79,31 @@ export async function createOrder(
       message: error.message
     });
   }
+}
+
+// WebSocket handler for order status streaming
+export function handleOrderStream(connection: WebSocket, req: FastifyRequest) {
+  const { orderId } = req.query as { orderId?: string };
+
+  if (!orderId) {
+    connection.send(JSON.stringify({
+      error: 'orderId is required in query params'
+    }));
+    connection.close();
+    return;
+  }
+
+  // Add connection and send initial status
+  addConnection(orderId, connection);
+  sendInitialStatus(orderId, connection);
+
+  // Handle connection close
+  connection.on('close', () => {
+    removeConnection(orderId, connection);
+  });
+
+  // Handle errors
+  connection.on('error', (err: any) => {
+    console.error(`WebSocket error for order ${orderId}:`, err);
+  });
 }
