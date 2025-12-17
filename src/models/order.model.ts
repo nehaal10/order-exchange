@@ -15,7 +15,6 @@ export interface Order {
   selectedDex?: DexName;
   expectedAmountOut?: string;
   actualAmountOut?: string;
-  slippageTolerance: number;
 
   transactionSignature?: string;
 
@@ -38,7 +37,6 @@ export interface CreateOrderDTO {
   tokenOut: string;
   amountIn: string;
   limitPrice?: string;
-  slippageTolerance?: number;
 }
 
 // WebSocket event structure
@@ -58,7 +56,6 @@ export interface OrderJob {
   tokenOut: string;
   amountIn: string;
   limitPrice?: string;
-  slippageTolerance: number;
 }
 
 // DEX quote response

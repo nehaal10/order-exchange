@@ -3,8 +3,9 @@ import { CreateOrderDTO } from '../models/order.model';
 import { OrderType, OrderStatus } from '../models/enums';
 import { randomUUID } from 'crypto';
 import { addConnection, removeConnection, sendInitialStatus } from '../services/websocket.service';
-import { storeOrder } from '../services/redis.service';
+import { storeOrder, getOrder } from '../services/redis.service';
 import { createOrderInDB } from '../services/postgres.service';
+import { enqueueOrder } from '../services/queue.service';
 import type { WebSocket } from '@fastify/websocket';
 
 // Simple validation helper
@@ -95,7 +96,7 @@ export async function createOrder(
 }
 
 // WebSocket handler for order status streaming
-export function handleOrderStream(connection: WebSocket, req: FastifyRequest) {
+export async function handleOrderStream(connection: WebSocket, req: FastifyRequest) {
   const { orderId } = req.query as { orderId?: string };
 
   if (!orderId) {
@@ -108,8 +109,22 @@ export function handleOrderStream(connection: WebSocket, req: FastifyRequest) {
 
   // Add connection and send initial status
   addConnection(orderId, connection);
-  sendInitialStatus(orderId, connection);
+  // Enqueue order for processing AFTER WebSocket connection established
+  const order = await getOrder(orderId);
 
+  if (order) {
+    await enqueueOrder({
+      orderId: order.id,
+      type: order.type,
+      tokenIn: order.tokenIn,
+      tokenOut: order.tokenOut,
+      amountIn: order.amountIn,
+      limitPrice: order.limitPrice,
+    });
+  }
+  
+  sendInitialStatus(orderId, connection);
+  
   // Handle connection close
   connection.on('close', () => {
     removeConnection(orderId, connection);

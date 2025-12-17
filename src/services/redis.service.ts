@@ -7,7 +7,7 @@ import 'dotenv/config';
 const redis = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
   port: parseInt(process.env.REDIS_PORT || '6380'),
-  maxRetriesPerRequest: 3,
+  maxRetriesPerRequest: null, // Required for BullMQ
 });
 
 redis.on('connect', () => {
