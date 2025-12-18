@@ -11,7 +11,7 @@ async function startServer() {
 
   // WebSocket streaming endpoint
   server.register(async function (server) {
-      server.get('/api/orders/stream', { websocket: true }, handleOrderStream);
+      server.get('/api/orders/execute', { websocket: true }, handleOrderStream);
   });
 
   server.listen({ port: 8080, host: '0.0.0.0' }, (err, address) => {
@@ -22,7 +22,6 @@ async function startServer() {
     console.log(`Server listening at ${address}`)
     console.log(`\nAPI Endpoints:`)
     console.log(`  POST /api/orders/execute - Create order and get WebSocket URL`)
-    console.log(`  WS   /api/orders/stream?orderId=<id> - Stream order status updates`)
   })
 }
 
