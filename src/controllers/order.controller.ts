@@ -72,7 +72,9 @@ export async function createOrder(
     ]);
 
     // Return orderId with WebSocket URL for status streaming
-    const wsUrl = `ws://localhost:8080/api/orders/stream?orderId=${orderId}`;
+    const host = request.headers.host || 'localhost:8080';
+    const protocol = request.headers['x-forwarded-proto'] === 'https' ? 'wss' : 'ws';
+    const wsUrl = `${protocol}://${host}/api/orders/execute?orderId=${orderId}`;
 
     return reply.status(201).send({
       orderId,
