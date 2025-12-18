@@ -57,6 +57,14 @@ Prevents race conditions by ensuring clients receive all updates from PENDING on
 
 Provides built-in retry (4 attempts: 2s → 4s → 8s exponential backoff), observability, concurrency control (10 concurrent orders, 100/minute rate limit), and local development without external queue dependencies.
 
+### 6. Redis Pub/Sub for Worker-WebSocket Communication
+
+Enables workers to broadcast status updates to the API server which then pushes them to WebSocket clients. Workers publish status changes to Redis channels, and the WebSocket service subscribes to receive updates. This decouples worker processing from client communication, allowing horizontal scaling of both workers and API servers independently.
+
+### 7. Separate Worker Process
+
+Workers run as a separate process (`npm run dev:worker`) instead of being embedded in the API server. This separation allows independent scaling - you can run multiple worker instances for higher throughput without scaling the API server, or vice versa. Workers only process jobs from the queue and don't handle HTTP requests, keeping concerns cleanly separated.
+
 ## Extending to Other Order Types
 
 To add support for LIMIT and SNIPER orders:

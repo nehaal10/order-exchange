@@ -5,9 +5,9 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node ./dist/routes/index.js",
+    "start": "node ./dist/routes/routes.js",
     "start:worker": "node ./dist/workers/order-processor.worker.js",
-    "dev": "tsx watch src/routes/index.ts",
+    "dev": "tsx watch src/routes/routes.ts",
     "dev:worker": "tsx watch src/workers/order-processor.worker.ts",
     "migrate": "node scripts/migrate.js",
     "test": "vitest run",
