@@ -1,11 +1,13 @@
+# Solana DEX Order Execution Engine
+
+A limit order execution system with mock DEX routing (Raydium/Meteora), WebSocket status streaming, and BullMQ-based concurrent processing.
 
 ## Key Features
 
 - **Multi-DEX Routing**: Compares quotes from Raydium and Meteora to select the best execution route (Mock Implementation)
-- **Real-Time Updates**: WebSocket connection provides live order status updates (PENDING → ROUTING → BUILDING → SUBMITTED → CONFIRMED)
-- **Concurrent Processing**: BullMQ worker pool handles 10 orders simultaneously with rate limiting (100 orders/minute)
-- **Smart Retry Logic**: Exponential backoff retry strategy (4 attempts: 2s → 4s → 8s) for transient failures
-- **Data Integrity**: PostgreSQL as source of truth for all order data
+- **Real-Time Updates**: WebSocket connection provides live order status updates
+- **Concurrent Processing**: Handles 10 orders simultaneously with rate limiting (100 orders/minute)
+- **Smart Retry Logic**: Exponential backoff retry strategy for transient failures
 - **Mock DEX Implementation**: Simulates Raydium/Meteora behavior for faster development and testing
 
 ## Architecture
@@ -19,69 +21,51 @@
 - **Testing**: Vitest - Unit and integration tests
 - **Docker**: Containerized infrastructure (PostgreSQL + Redis)
 
-### Request Flow
+### Order Status Flow
 
 ```
-Client → HTTP POST → PostgreSQL (create order)
-                   ↓
-              WebSocket Upgrade
-                   ↓
-         Enqueue job to Redis
-                   ↓
-        Broadcast PENDING status
-                   ↓
-      Worker picks job from queue
-                   ↓
-    ROUTING → fetch DEX quotes in parallel
-                   ↓
-    BUILDING → construct transaction
-                   ↓
-    SUBMITTED → submit to mock DEX
-                   ↓
-    CONFIRMED → update PostgreSQL + broadcast
+PENDING → ROUTING → BUILDING → SUBMITTED → CONFIRMED
+                                         ↘ FAILED
 ```
 
-**Critical Sequence**:
-1. **PostgreSQL WRITE** - Create order record (status: PENDING)
-2. **WebSocket UPGRADE** - Establish connection before queueing
-3. **WebSocket BROADCAST** - Send initial PENDING event
-4. **Redis ENQUEUE** - Add BullMQ job for async processing
-
-This ensures clients receive updates from the beginning and orders exist before processing starts.
+1. **PENDING**: Order created and queued
+2. **ROUTING**: Fetching quotes from Raydium + Meteora
+3. **BUILDING**: Constructing transaction with best route
+4. **SUBMITTED**: Transaction submitted to DEX
+5. **CONFIRMED**: Transaction confirmed (includes signature)
+6. **FAILED**: Execution failed (includes error)
 
 ## Design Decisions
 
 ### 1. MARKET Orders Only
 
-Choose Market Orders only because of its Simplest order type for MVP executes immediately at current price without conditional logic. LIMIT orders require price monitoring and conditional execution. SNIPER orders need token launch detection. MARKET orders demonstrate core routing, queueing, and WebSocket systems without added complexity.
+Chose MARKET orders as the simplest order type for MVP - executes immediately at current price without conditional logic. LIMIT orders require price monitoring and conditional execution, while SNIPER orders need token launch detection.
 
-**Extending to LIMIT/SNIPER**:
-- Add price comparison logic in worker before execution
-- Implement periodic price polling for limit orders
-- Add token launch monitoring service for sniper orders
-- Update validation to accept `limitPrice` and `targetToken` parameters
+### 2. Mock DEX Implementation
 
-### 2. PostgreSQL as Source of Truth
+Demonstrates architecture without Solana blockchain complexity. Mock DEXs allow deterministic testing with simulated latency and failures. All routing logic in `DexRouterService` remains unchanged when migrating to real Raydium/Meteora SDKs.
 
-PostgreSQL stores all order data permanently in the `orders` table. 
+### 3. PostgreSQL as Source of Truth
 
+Stores all order data permanently in the `orders` table. Redis only holds queue jobs with auto-cleanup. Can rebuild queue from PostgreSQL if Redis fails.
 
-### 3. WebSocket During HTTP Upgrade
+### 4. WebSocket During HTTP Upgrade
 
-Prevents race conditions by ensuring clients receive all updates from PENDING onwards. Single request creates order and subscribes to updates simultaneously. Client doesn't need to coordinate two separate requests (POST order → connect WebSocket). Server guarantees no missed status events.
+Prevents race conditions by ensuring clients receive all updates from PENDING onwards. Single request creates order and subscribes to updates simultaneously, guaranteeing no missed status events.
 
-### 4. BullMQ for Job Queue
+### 5. BullMQ for Job Queue
 
-Provides built-in retry, observability, and concurrency control. Implements exponential backoff retry (4 attempts: 2s → 4s → 8s), job metrics, progress tracking, and worker pool with rate limiting. Enables local development without external queue dependencies like AWS SQS.
+Provides built-in retry (4 attempts: 2s → 4s → 8s exponential backoff), observability, concurrency control (10 concurrent orders, 100/minute rate limit), and local development without external queue dependencies.
 
-### 5. Retry Strategy
+## Extending to Other Order Types
 
-Configured with 4 attempts and exponential backoff (2s → 4s → 8s). Retryable errors include `DexUnavailableError`, and `TransactionTimeoutError`. This handles transient failures gracefully without infinite loops on permanent errors.
+To add support for LIMIT and SNIPER orders:
 
-### 6. Concurrent Processing
+**LIMIT Orders**: Add price comparison logic in worker before execution, implement periodic price polling to monitor market prices, and update validation to accept `limitPrice` parameter.
 
-Configured for 10 concurrent orders with 100 orders/minute rate limit. Prevents DEX API rate limiting and resource overload while balancing throughput with system stability. Orders queue during traffic spikes; scale workers horizontally for higher throughput.
+**SNIPER Orders**: Implement token launch monitoring service to detect new token deployments, add conditional execution logic for target tokens, and update validation to accept `targetToken` parameter.
 
+The existing routing, queueing, and WebSocket infrastructure remains unchanged - only worker execution logic needs modification.
 
 ## Setup Instructions
 
@@ -89,52 +73,36 @@ Configured for 10 concurrent orders with 100 orders/minute rate limit. Prevents 
 
 - Node.js 18+ and npm
 - Docker Desktop (for PostgreSQL + Redis)
-- Git
 
 ### Installation
 
-1. **Clone the repository**
+1. **Clone and install**
 ```bash
 git clone <your-repo-url>
 cd eternalabs
-```
-
-2. **Install dependencies**
-```bash
 npm install
 ```
 
-3. **Set up environment variables**
+2. **Set up environment variables**
 ```bash
 cp .env.example .env
 # Edit .env with your configuration (defaults work for local development)
 ```
 
-4. **Start The Application With Docker (PostgreSQL + Redis + Backend + Redis)**
+3. **Start infrastructure and application**
 ```bash
 npm run docker:up
 ```
-This will automatically initialize the database schema using `scripts/init-db.sql`
+This automatically initializes the database schema using `scripts/init-db.sql`
 
-5. **View logs**
+4. **View logs**
 ```bash
 npm run docker:logs
 ```
 
 The API will be available at `http://localhost:8080`
 
-### Testing
-```bash
-npm run docker:up
-
-npm test
-
-npm run test:watch
-
-npm test -- --coverage
-```
-
-## API Documentation
+## API Usage
 
 ### Create Order
 
@@ -162,18 +130,9 @@ npm test -- --coverage
 }
 ```
 
-**WebSocket Upgrade**:
-The client can upgrade the connection to WebSocket by including the `Upgrade: websocket` header. The server will automatically establish a WebSocket connection for real-time status updates.
+### WebSocket Updates
 
-### Order Types
-
-- `MARKET`: Execute immediately at current market price (currently implemented)
-
-**Note**: Only MARKET orders are supported in the current version.
-
-## WebSocket Events
-
-After connecting via WebSocket upgrade, clients receive real-time status updates:
+Include `Upgrade: websocket` header to receive real-time status updates:
 
 ```json
 {
@@ -186,51 +145,26 @@ After connecting via WebSocket upgrade, clients receive real-time status updates
 }
 ```
 
-### Status Progression
-
-1. **PENDING**: Order created and queued
-2. **ROUTING**: Fetching quotes from Raydium + Meteora
-3. **BUILDING**: Constructing transaction with best route
-4. **SUBMITTED**: Transaction submitted to DEX
-5. **CONFIRMED**: Transaction confirmed (includes signature)
-6. **FAILED**: Execution failed (includes error)
-7. **CANCELLED**: Order cancelled by user/system
-
-### Connection Cleanup
-
-- WebSocket connections are automatically cleaned up 30 seconds after terminal status (CONFIRMED/FAILED/CANCELLED)
-- Multiple clients can subscribe to the same order
-- Connections are removed when client disconnects
+WebSocket connections are automatically cleaned up 30 seconds after terminal status (CONFIRMED/FAILED).
 
 ## Testing
 
-The project includes 12 comprehensive tests covering:
+Run tests (requires infrastructure running):
 
-### Test Coverage
+```bash
+npm run docker:up
+npm test
+npm run test:watch
+npm test -- --coverage
+```
 
-1. **DEX Router Service** (2 tests)
-   - Best quote selection based on highest amountOut
-   - Error handling when all DEXs are unavailable
-
-2. **Mock DEX Service** (2 tests)
-   - Valid quote generation with correct fees
-   - Transaction signature generation (88 characters)
-
-3. **Redis Service** (2 tests)
-   - Order storage and retrieval
-   - Pub/Sub status update publishing
-
-4. **Queue Service** (2 tests)
-   - Job enqueueing with orderId as jobId
-   - Retry configuration (4 attempts, exponential backoff)
-
-5. **WebSocket Service** (2 tests)
-   - Connection management for orders
-   - Disconnection handling
-
-6. **Order Validation** (2 tests)
-   - Valid MARKET order validation
-   - Invalid order rejection (negative amounts)
+The project includes 12 tests covering:
+- DEX Router Service (quote selection, error handling)
+- Mock DEX Service (quote generation, transaction signatures)
+- Redis Service (storage, pub/sub)
+- Queue Service (job enqueueing, retry configuration)
+- WebSocket Service (connection management)
+- Order Validation (valid/invalid orders)
 
 ## Demo Video
 
