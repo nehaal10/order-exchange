@@ -11,7 +11,6 @@ export enum OrderStatus {
   SUBMITTED = 'submitted',
   CONFIRMED = 'confirmed',
   FAILED = 'failed',
-  CANCELLED = 'cancelled'
 }
 
 export enum DexName {

@@ -54,6 +54,24 @@ services:
       redis:
         condition: service_healthy
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: eternalabs-worker
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/eternalabs
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MAX_CONCURRENT_ORDERS: 10
+      ORDERS_PER_MINUTE: 100
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:

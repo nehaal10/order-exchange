@@ -90,5 +90,25 @@ export async function getAllActiveOrders(): Promise<Order[]> {
     .map(o => JSON.parse(o));
 }
 
+/**
+ * Publish order status update to Redis Pub/Sub
+ * Worker uses this to send real-time updates to API server
+ */
+export async function publishStatusUpdate(
+  orderId: string,
+  status: OrderStatus,
+  data?: Record<string, any>
+): Promise<void> {
+  const message = JSON.stringify({
+    orderId,
+    status,
+    timestamp: new Date().toISOString(),
+    ...data,
+  });
+
+  await redis.publish('order-status-updates', message);
+  console.log(`[Redis Pub/Sub] Published update for order ${orderId}: ${status}`);
+}
+
 // Export redis client for use in other services
 export { redis };
