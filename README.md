@@ -174,10 +174,6 @@ The project includes 12 tests covering:
 - WebSocket Service (connection management)
 - Order Validation (valid/invalid orders)
 
-## Demo Video
-
-[Link to YouTube demo video will be added here]
-
 ## Deployment
 
-Deployed on Railway: [URL will be added here]
+Deployed URL: https://order-exchange.onrender.com/api/orders/execute
