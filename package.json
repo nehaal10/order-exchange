@@ -5,11 +5,12 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node ./dist/routes/routes.js",
+    "start": "node ./dist/routes/routes.js & node ./dist/workers/order-processor.worker.js",
     "start:worker": "node ./dist/workers/order-processor.worker.js",
     "dev": "tsx watch src/routes/routes.ts",
     "dev:worker": "tsx watch src/workers/order-processor.worker.ts",
     "migrate": "tsx scripts/migrate.ts",
+    "demo": "node demo-concurrent-orders.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "docker:up": "docker-compose up -d",
